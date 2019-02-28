@@ -4,7 +4,17 @@ require 'vendor/autoload.php';
 
 $DRONE_URL = 'https://drone.nextcloud.com';
 $DRONE_TOKEN = 'abc';
-$JOB_ID = '16516';
+$MINIMUM_JOB_ID = 16573;
+
+$help = "Call this script without an argument to fetch all the failed logs of master branch jobs until \$MINIMUM_JOB_ID.
+
+Supply a job number to fetch the failure logs for this specifc job.
+";
+
+if ($argc === 2 && ($argv[1] === '-h' || $argv[1] === '--help')) {
+	echo $help;
+	exit;
+}
 
 $client = new GuzzleHttp\Client([
 	'headers' => [
@@ -13,11 +23,16 @@ $client = new GuzzleHttp\Client([
 	'base_uri' => $DRONE_URL,
 ]);
 
-$res = $client->request('GET', '/api/repos/nextcloud/server/builds', [
-	'query' => [
-		#'page' => $i,
-	],
-]);
+if ($argc > 1) {
+	$number = (int)$argv[1];
+	if (!is_int($number)) {
+		echo "Error: argument needs to be a number\n";
+	}
+	printStats($client, $number, true);
+	exit;
+}
+
+$res = $client->request('GET', '/api/repos/nextcloud/server/builds');
 
 if ($res->getStatusCode() !== 200) {
 	throw new \Exception('Non-200 status code');
@@ -26,6 +41,7 @@ if ($res->getStatusCode() !== 200) {
 $data = json_decode($res->getBody(), true);
 $lowestJobId = INF;
 
+echo "Checking all the latest CI jobs until $MINIMUM_JOB_ID that ran against master…\n";
 foreach ($data as $job) {
 	if ($job['number'] < $lowestJobId) {
 		$lowestJobId = $job['number'];
@@ -37,6 +53,7 @@ foreach ($data as $job) {
 			}
 			printStats($client, $job['number']);
 		} else {
+			echo "Checking {$job['number']} …\n";
 			echo "{$job['number']} success\n";
 		}
 	}
@@ -46,7 +63,8 @@ for ($i = $lowestJobId - 1; $i > $MINIMUM_JOB_ID; $i--) {
 	printStats($client, $i);
 }
 
-function printStats($client, $jobId) {
+function printStats($client, $jobId, $force = false) {
+	echo "Checking $jobId …\n";
 
 	$res = $client->request('GET', '/api/repos/nextcloud/server/builds/' . $jobId);
 
@@ -56,20 +74,26 @@ function printStats($client, $jobId) {
 
 	$data = json_decode($res->getBody(), true);
 
-	if ($data['event'] !== 'push' || $data['branch'] !== 'master') {
+	if (!$force && ($data['event'] !== 'push' || $data['branch'] !== 'master')) {
 		return;
 	}
 	if ($data['status'] === 'success') {
 		echo "{$data['number']} success\n";
 		return;
 	}
+	if ($data['status'] === 'running') {
+		echo "{$data['number']} is still running\n";
+		return;
+	}
 
-	echo 'Status of ' . $jobId . ': ' . $data['status'] . PHP_EOL;
+	echo '### Status of ' . $jobId . ': ' . $data['status'] . PHP_EOL . PHP_EOL;
 
 	$counts = [
 		'success' => 0,
 		'failure' => 0,
 		'cancelled' => 0,
+		'pending' => 0,
+		'running' => 0,
 	];
 
 	foreach ($data['procs'] as $proc) {
@@ -83,7 +107,11 @@ function printStats($client, $jobId) {
 			continue;
 		}
 
-		echo "\t{$proc['state']} " . getProcName($proc['environ']) . PHP_EOL;
+		if ($proc['state'] === 'running') {
+			continue;
+		}
+
+		echo " * " . getProcName($proc['environ']) . PHP_EOL;
 		foreach ($proc['children'] as $child) {
 			if ($child['state'] === 'success') {
 				continue;
@@ -94,8 +122,6 @@ function printStats($client, $jobId) {
 			if ($child['name'] === 'git' && $child['state'] === 'failure') {
 				continue;
 			}
-
-			echo "\t\t" . $child['state'] . ' ' . $child['name'] . ' ' . $child['pid'] . PHP_EOL;
 
 			if ($child['state'] === 'cancelled') {
 				continue;
@@ -122,17 +148,18 @@ function printStats($client, $jobId) {
 					$failures = $matches[1];
 					$failures = str_replace([' ', '/drone/src/github.com/nextcloud/server/'], ['', ''], $failures);
 					$failures = explode("\n", trim($failures));
-					echo "\t\t\t" . join("\n\t\t\t", $failures) . PHP_EOL;
+					echo "     * " . join("\n     * ", $failures) . PHP_EOL;
 
+					echo "<details><summary>Show full log</summary>\n\n```\n";
 					foreach ($failures as $failure) {
 						$start = strpos($fullLog, $failure);
 						$end = strpos($fullLog, "\n\n", $start);
 						$realStart = strrpos(substr($fullLog, 0, $start), "\n\n") + 2;
 
-						echo substr($fullLog, $realStart, $end - $realStart) . PHP_EOL . PHP_EOL;
-
+						echo substr($fullLog, $realStart, $end - $realStart) . PHP_EOL;
 
 					}
+					echo "```\n</details>\n\n\n";
 
 				} else {
 					list($a, $b) = explode("--- Failed scenarios:", $fullLog);
@@ -142,9 +169,15 @@ function printStats($client, $jobId) {
 				}
 			} else if ($child['name'] === 'git') {
 				echo "\t\t\tIgnoring git failure\n";
+			} else if ($child['name'] === 'phan') {
+				$start = strrpos($fullLog, "\n+") + 2;
+
+				echo "<details><summary>Show full log</summary>\n\n```\n";
+				echo "$" . substr($fullLog, $start);
+				echo "```\n</details>\n\n\n";
 			} else {
 				echo "Missing extraction for {$child['name']}";
-				#throw new \Exception("Missing extraction");
+				throw new \Exception("Missing extraction");
 			}
 		}
 	}
