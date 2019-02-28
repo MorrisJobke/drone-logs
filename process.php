@@ -108,6 +108,7 @@ function printStats($client, $jobId, $force = false) {
 				continue;
 			}
 			if ($child['name'] === 'git' && $child['state'] === 'failure') {
+				echo "   * git clone failure\n";
 				continue;
 			}
 
@@ -159,8 +160,41 @@ function printStats($client, $jobId, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo "$" . substr($fullLog, $start);
 				echo "```\n</details>\n\n\n";
+			} else if (in_array($child['name'], [
+				'nodb-php7.0',
+				'nodb-php7.1',
+				'nodb-php7.2',
+				'nodb-php7.3',
+				'sqlite-php7.0',
+				'sqlite-php7.1',
+				'sqlite-php7.2',
+				'sqlite-php7.3',
+				'mysql-php7.0',
+				'mysql-php7.1',
+				'mysql-php7.2',
+				'mysql-php7.3',
+				'mysql5.6-php7.0',
+				'mysql5.5-php7.0',
+				'postgres-php7.0',
+				'mysql5.6-php7.1',
+				'mysql5.5-php7.1',
+				'postgres-php7.1',
+				'mysqlmb4-php7.0',
+				'mysqlmb4-php7.1',
+				'mysqlmb4-php7.2',
+				'mysqlmb4-php7.3',
+				'nodb-codecov',
+				'db-codecov',
+			])) {
+				$start = strpos($fullLog, "\nThere w") + 1;
+				$end = strpos($fullLog, "skipped tests:\n");
+				$realEnd = strrpos(substr($fullLog, 0, $end), "--") - 1;
+
+				echo "<details><summary>Show full log</summary>\n\n```\n";
+				echo substr($fullLog, $start, $realEnd - $start) . PHP_EOL;
+				echo "```\n</details>\n\n\n";
 			} else {
-				echo "Missing extraction for {$child['name']}";
+				echo "Missing extraction for {$child['name']}\n";
 				throw new \Exception("Missing extraction");
 			}
 		}
