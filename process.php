@@ -85,45 +85,29 @@ function printStats($client, $jobId, $force = false) {
 		echo "{$data['number']} is still running\n";
 		return;
 	}
+	if ($data['status'] === 'pending') {
+		echo "{$data['number']} is pending\n";
+		return;
+	}
 
-	echo '### Status of ' . $jobId . ': ' . $data['status'] . PHP_EOL . PHP_EOL;
-
-	$counts = [
-		'success' => 0,
-		'failure' => 0,
-		'cancelled' => 0,
-		'pending' => 0,
-		'running' => 0,
-	];
+	global $DRONE_URL;
+	echo '### Status of [' . $jobId . '](' . $DRONE_URL . '/nextcloud/server/' . $jobId . '): ' . $data['status'] . PHP_EOL . PHP_EOL;
 
 	foreach ($data['procs'] as $proc) {
-		$counts[$proc['state']]++;
-
-		if ($proc['state'] === 'success') {
-			continue;
-		}
-
-		if ($proc['state'] === 'pending') {
-			continue;
-		}
-
-		if ($proc['state'] === 'running') {
+		if (in_array($proc['state'], ['success', 'pending', 'running'])) {
 			continue;
 		}
 
 		echo " * " . getProcName($proc['environ']) . PHP_EOL;
+		if ($proc['state'] === 'failure' && isset($proc['error']) &&  $proc['error'] === 'Cancelled') {
+			echo "   * cancelled\n";
+			continue;
+		}
 		foreach ($proc['children'] as $child) {
-			if ($child['state'] === 'success') {
-				continue;
-			}
-			if ($child['state'] === 'skipped') {
+			if (in_array($child['state'], ['success', 'skipped', 'cancelled', 'killed'])) {
 				continue;
 			}
 			if ($child['name'] === 'git' && $child['state'] === 'failure') {
-				continue;
-			}
-
-			if ($child['state'] === 'cancelled') {
 				continue;
 			}
 
@@ -162,7 +146,7 @@ function printStats($client, $jobId, $force = false) {
 					echo "```\n</details>\n\n\n";
 
 				} else {
-					list($a, $b) = explode("--- Failed scenarios:", $fullLog);
+					list(, $b) = explode("--- Failed scenarios:", $fullLog);
 
 					echo $b;
 					throw new \Exception("Regex didn't match");
@@ -181,12 +165,6 @@ function printStats($client, $jobId, $force = false) {
 			}
 		}
 	}
-
-	/*
-	echo "success: {$counts['success']}\n";
-	echo "failure: {$counts['failure']}\n";
-	echo "cancelled: {$counts['cancelled']}\n";
-	*/
 }
 
 function getProcName($env) {

@@ -11,3 +11,9 @@ $ php process.php
 $ php process.php 12345
 ... prints logs of failed jobs from https://drone.nextcloud.com/nextcloud/server/12345
 ```
+
+## Installation
+
+```
+composer install
+```
