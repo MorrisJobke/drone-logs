@@ -24,14 +24,26 @@ if ($res->getStatusCode() !== 200) {
 }
 
 $data = json_decode($res->getBody(), true);
+$lowestJobId = INF;
 
 foreach ($data as $job) {
-	if ($job['event'] === 'push' && $job['status'] !== 'success' && $job['branch'] === 'master') {
-		if (in_array($job['number'], [16529, 16527, 16526, 16525, 16510, 16507])) {
-			continue; # huge git clone failure
-		}
-		printStats($client, $job['number']);
+	if ($job['number'] < $lowestJobId) {
+		$lowestJobId = $job['number'];
 	}
+	if ($job['event'] === 'push' && $job['branch'] === 'master') {
+		if ($job['status'] !== 'success') {
+			if ($job['number'] < $MINIMUM_JOB_ID) {
+				continue;
+			}
+			printStats($client, $job['number']);
+		} else {
+			echo "{$job['number']} success\n";
+		}
+	}
+}
+
+for ($i = $lowestJobId - 1; $i > $MINIMUM_JOB_ID; $i--) {
+	printStats($client, $i);
 }
 
 function printStats($client, $jobId) {
@@ -44,7 +56,11 @@ function printStats($client, $jobId) {
 
 	$data = json_decode($res->getBody(), true);
 
-	if ($data['event'] !== 'push' || $data['status'] === 'success' || $data['branch'] !== 'master') {
+	if ($data['event'] !== 'push' || $data['branch'] !== 'master') {
+		return;
+	}
+	if ($data['status'] === 'success') {
+		echo "{$data['number']} success\n";
 		return;
 	}
 
@@ -105,8 +121,18 @@ function printStats($client, $jobId) {
 				if (isset($matches[1])) {
 					$failures = $matches[1];
 					$failures = str_replace([' ', '/drone/src/github.com/nextcloud/server/'], ['', ''], $failures);
-					$failures = str_replace("\n", "\n\t\t\t", $failures);
-					echo "\t\t\t" . $failures . PHP_EOL;
+					$failures = explode("\n", trim($failures));
+					echo "\t\t\t" . join("\n\t\t\t", $failures) . PHP_EOL;
+
+					foreach ($failures as $failure) {
+						$start = strpos($fullLog, $failure);
+						$end = strpos($fullLog, "\n\n", $start);
+						$realStart = strrpos(substr($fullLog, 0, $start), "\n\n") + 2;
+
+						echo substr($fullLog, $realStart, $end - $realStart) . PHP_EOL . PHP_EOL;
+
+
+					}
 
 				} else {
 					list($a, $b) = explode("--- Failed scenarios:", $fullLog);
