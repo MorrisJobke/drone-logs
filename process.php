@@ -13,9 +13,26 @@ $client = new GuzzleHttp\Client([
 	'base_uri' => $DRONE_URL,
 ]);
 
+$res = $client->request('GET', '/api/repos/nextcloud/server/builds', [
+	'query' => [
+		#'page' => $i,
+	],
+]);
 
+if ($res->getStatusCode() !== 200) {
+	throw new \Exception('Non-200 status code');
+}
 
-printStats($client, $JOB_ID);
+$data = json_decode($res->getBody(), true);
+
+foreach ($data as $job) {
+	if ($job['event'] === 'push' && $job['status'] !== 'success' && $job['branch'] === 'master') {
+		if (in_array($job['number'], [16529, 16527, 16526, 16525, 16510, 16507])) {
+			continue; # huge git clone failure
+		}
+		printStats($client, $job['number']);
+	}
+}
 
 function printStats($client, $jobId) {
 
@@ -27,7 +44,11 @@ function printStats($client, $jobId) {
 
 	$data = json_decode($res->getBody(), true);
 
-	echo 'Status: ' . $data['status'] . PHP_EOL;
+	if ($data['event'] !== 'push' || $data['status'] === 'success' || $data['branch'] !== 'master') {
+		return;
+	}
+
+	echo 'Status of ' . $jobId . ': ' . $data['status'] . PHP_EOL;
 
 	$counts = [
 		'success' => 0,
@@ -42,13 +63,23 @@ function printStats($client, $jobId) {
 			continue;
 		}
 
-		echo "{$proc['state']} " . getProcName($proc['environ']) . PHP_EOL;
+		if ($proc['state'] === 'pending') {
+			continue;
+		}
+
+		echo "\t{$proc['state']} " . getProcName($proc['environ']) . PHP_EOL;
 		foreach ($proc['children'] as $child) {
 			if ($child['state'] === 'success') {
 				continue;
 			}
+			if ($child['state'] === 'skipped') {
+				continue;
+			}
+			if ($child['name'] === 'git' && $child['state'] === 'failure') {
+				continue;
+			}
 
-			echo "\t" . $child['state'] . ' ' . $child['name'] . ' ' . $child['pid'] . PHP_EOL;
+			echo "\t\t" . $child['state'] . ' ' . $child['name'] . ' ' . $child['pid'] . PHP_EOL;
 
 			if ($child['state'] === 'cancelled') {
 				continue;
@@ -74,8 +105,8 @@ function printStats($client, $jobId) {
 				if (isset($matches[1])) {
 					$failures = $matches[1];
 					$failures = str_replace([' ', '/drone/src/github.com/nextcloud/server/'], ['', ''], $failures);
-					$failures = str_replace("\n", "\n\t\t", $failures);
-					echo "\t\t" . $failures . PHP_EOL;
+					$failures = str_replace("\n", "\n\t\t\t", $failures);
+					echo "\t\t\t" . $failures . PHP_EOL;
 
 				} else {
 					list($a, $b) = explode("--- Failed scenarios:", $fullLog);
@@ -83,8 +114,11 @@ function printStats($client, $jobId) {
 					echo $b;
 					throw new \Exception("Regex didn't match");
 				}
+			} else if ($child['name'] === 'git') {
+				echo "\t\t\tIgnoring git failure\n";
 			} else {
-				throw new \Exception("Missing extraction");
+				echo "Missing extraction for {$child['name']}";
+				#throw new \Exception("Missing extraction");
 			}
 		}
 	}
