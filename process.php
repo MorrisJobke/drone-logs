@@ -108,7 +108,7 @@ function printStats($client, $jobId, $force = false) {
 				continue;
 			}
 			if ($child['name'] === 'git' && $child['state'] === 'failure') {
-				echo "   * git clone failure\n";
+				echo "   * git clone failure - can typically be ignored\n";
 				continue;
 			}
 
@@ -194,8 +194,8 @@ function printStats($client, $jobId, $force = false) {
 				echo substr($fullLog, $start, $realEnd - $start) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
 			} else {
-				echo "Missing extraction for {$child['name']}\n";
-				throw new \Exception("Missing extraction");
+				echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
+				#throw new \Exception("Missing extraction");
 			}
 		}
 	}
