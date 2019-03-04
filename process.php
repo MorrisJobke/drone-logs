@@ -64,7 +64,7 @@ for ($i = $lowestJobId - 1; $i > $MINIMUM_JOB_ID; $i--) {
 }
 
 function printStats($client, $jobId, $force = false) {
-	echo "Checking $jobId …\n";
+	#echo "Checking $jobId …\n";
 
 	$res = $client->request('GET', '/api/repos/nextcloud/server/builds/' . $jobId);
 
