@@ -206,7 +206,12 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 			} else {
 				echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 				if ($sentryClient) {
-					$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']));
+					$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']), null, null, [
+						'procName' => getProcName($proc['environ']),
+						'proc' => $proc,
+						'child' => $child,
+						'url' => "/nextcloud/server/$jobId/{$child['pid']}",
+					]);
 				}
 			}
 		}
