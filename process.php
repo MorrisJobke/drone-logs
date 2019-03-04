@@ -110,7 +110,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 
 		echo " * " . getProcName($proc['environ']) . PHP_EOL;
 		if ($proc['state'] === 'failure' && isset($proc['error']) &&  $proc['error'] === 'Cancelled') {
-			echo "   * cancelled\n";
+			echo "   * cancelled - typically means that the tests took longer than the drone CI allows them to run\n";
 			continue;
 		}
 		foreach ($proc['children'] as $child) {
