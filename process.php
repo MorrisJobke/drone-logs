@@ -5,6 +5,16 @@ require 'vendor/autoload.php';
 $DRONE_URL = 'https://drone.nextcloud.com';
 $DRONE_TOKEN = 'abc';
 $MINIMUM_JOB_ID = 16573;
+$SENTRY_DSN = '';
+
+$sentryClient = null;
+if ($SENTRY_DSN !== '') {
+	$sentryClient = new Raven_Client($SENTRY_DSN);
+	$error_handler = new Raven_ErrorHandler($sentryClient);
+	$error_handler->registerExceptionHandler();
+	$error_handler->registerErrorHandler();
+	$error_handler->registerShutdownFunction();
+}
 
 $help = "Call this script without an argument to fetch all the failed logs of master branch jobs until \$MINIMUM_JOB_ID.
 
@@ -195,7 +205,9 @@ function printStats($client, $jobId, $force = false) {
 				echo "```\n</details>\n\n\n";
 			} else {
 				echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
-				#throw new \Exception("Missing extraction");
+				if ($sentryClient) {
+					$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']));
+				}
 			}
 		}
 	}
