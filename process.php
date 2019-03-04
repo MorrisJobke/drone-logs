@@ -38,7 +38,7 @@ if ($argc > 1) {
 	if (!is_int($number)) {
 		echo "Error: argument needs to be a number\n";
 	}
-	printStats($client, $number, true);
+	printStats($client, $number, $sentryClient, true);
 	exit;
 }
 
@@ -61,7 +61,7 @@ foreach ($data as $job) {
 			if ($job['number'] < $MINIMUM_JOB_ID) {
 				continue;
 			}
-			printStats($client, $job['number']);
+			printStats($client, $job['number'], $sentryClient);
 		} else {
 			echo "Checking {$job['number']} …\n";
 			echo "{$job['number']} success\n";
@@ -70,10 +70,10 @@ foreach ($data as $job) {
 }
 
 for ($i = $lowestJobId - 1; $i > $MINIMUM_JOB_ID; $i--) {
-	printStats($client, $i);
+	printStats($client, $i, $sentryClient);
 }
 
-function printStats($client, $jobId, $force = false) {
+function printStats($client, $jobId, $sentryClient, $force = false) {
 	#echo "Checking $jobId …\n";
 
 	$res = $client->request('GET', '/api/repos/nextcloud/server/builds/' . $jobId);
