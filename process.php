@@ -136,7 +136,8 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				$fullLog .= $log['out'];
 			}
 
-			if (substr($child['name'], 0, strlen('acceptance')) === 'acceptance') {
+			if (substr($child['name'], 0, strlen('acceptance')) === 'acceptance' ||
+				substr($child['name'], 0, strlen('integration-')) === 'integration-' ) {
 				preg_match('!--- Failed scenarios:\n\n(((.+)\n)+)\n!', $fullLog, $matches);
 
 				if (isset($matches[1])) {
