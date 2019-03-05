@@ -204,6 +204,19 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo substr($fullLog, $start, $realEnd - $start) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
+			} else if (in_array($child['name'], [
+				'sqlite-php7.0-samba-native',
+				'sqlite-php7.0-samba-non-native',
+				'sqlite-php7.1-samba-native',
+				'sqlite-php7.1-samba-non-native',
+				'memcache-memcached',
+			])) {
+				$start = strpos($fullLog, "\nThere w") + 1;
+				$end = strpos($fullLog, "FAILURES!\n") - 1;
+
+				echo "<details><summary>Show full log</summary>\n\n```\n";
+				echo substr($fullLog, $start, $end - $start) . PHP_EOL;
+				echo "```\n</details>\n\n\n";
 			} else {
 				echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 				if ($sentryClient) {
