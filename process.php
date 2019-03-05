@@ -225,6 +225,10 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 
 					$log .= "The autoloaders are not up to date\nPlease run: bash build/autoloaderchecker.sh\nAnd commit the result" . PHP_EOL . PHP_EOL;
 				}
+				if (strpos($fullLog, 'CA bundle is not up to date.')) {
+
+					$log .= "CA bundle is not up to date.\nPlease run: bash build/ca-bundle-checker.sh\nAnd commit the result" . PHP_EOL . PHP_EOL;
+				}
 				if (strpos($fullLog, 'App is not compliant')) {
 					$end = strpos($fullLog, 'App is not compliant');
 					$start = strrpos(substr($fullLog, 0, $end), 'Testing');
