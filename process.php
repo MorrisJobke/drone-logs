@@ -217,6 +217,42 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo substr($fullLog, $start, $end - $start) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
+			} else if ($child['name'] === 'checkers') {
+
+				$log = '';
+
+				if (strpos($fullLog, 'The autoloaders are not up to date')) {
+
+					$log .= "The autoloaders are not up to date\nPlease run: bash build/autoloaderchecker.sh\nAnd commit the result" . PHP_EOL . PHP_EOL;
+				}
+				if (strpos($fullLog, 'App is not compliant')) {
+					$end = strpos($fullLog, 'App is not compliant');
+					$start = strrpos(substr($fullLog, 0, $end), 'Testing');
+
+					$subLog = substr($fullLog, $start);
+					$subLog = str_replace('Nextcloud is not installed - only a limited number of commands are available', 'replace', $subLog);
+					$subLog = preg_replace('/Testing \w+\\nApp is compliant - awesome job!/', '', $subLog);
+
+					$log .= $subLog . PHP_EOL . PHP_EOL;
+				}
+
+				if ($log === '') {
+					echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
+					if ($sentryClient) {
+						$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']), null, null, [
+							'procName' => getProcName($proc['environ']),
+							'proc' => $proc,
+							'child' => $child,
+							'url' => "/nextcloud/server/$jobId/{$child['pid']}",
+						]);
+					}
+				} else {
+					echo "<details><summary>Show full log</summary>\n\n```\n";
+					echo $log;
+					echo "```\n</details>\n\n\n";
+				}
+
+
 			} else {
 				echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 				if ($sentryClient) {
