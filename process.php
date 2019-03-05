@@ -152,7 +152,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 						$end = strpos($fullLog, "\n\n", $start);
 						$realStart = strrpos(substr($fullLog, 0, $start), "\n\n") + 2;
 
-						echo substr($fullLog, $realStart, $end - $realStart) . PHP_EOL;
+						echo substr($fullLog, $realStart, $end - $realStart) . PHP_EOL . PHP_EOL;
 
 					}
 					echo "```\n</details>\n\n\n";
