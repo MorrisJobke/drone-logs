@@ -108,9 +108,9 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 			continue;
 		}
 
-		echo " * " . getProcName($proc['environ']) . PHP_EOL;
-		if ($proc['state'] === 'failure' && isset($proc['error']) &&  $proc['error'] === 'Cancelled') {
-			echo "   * cancelled - typically means that the tests took longer than the drone CI allows them to run\n";
+		echo "#### " . getProcName($proc['environ']) . PHP_EOL;
+		if ($proc['state'] === 'failure' && isset($proc['error']) && $proc['error'] === 'Cancelled') {
+			echo " * cancelled - typically means that the tests took longer than the drone CI allows them to run\n";
 			continue;
 		}
 		foreach ($proc['children'] as $child) {
@@ -118,7 +118,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				continue;
 			}
 			if ($child['name'] === 'git' && $child['state'] === 'failure') {
-				echo "   * git clone failure - can typically be ignored\n";
+				echo " * git clone failure - can typically be ignored\n";
 				continue;
 			}
 
@@ -144,7 +144,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 					$failures = $matches[1];
 					$failures = str_replace([' ', '/drone/src/github.com/nextcloud/server/'], ['', ''], $failures);
 					$failures = explode("\n", trim($failures));
-					echo "     * " . join("\n     * ", $failures) . PHP_EOL;
+					echo " * " . join("\n * ", $failures) . PHP_EOL;
 
 					echo "<details><summary>Show full log</summary>\n\n```\n";
 					foreach ($failures as $failure) {
@@ -241,7 +241,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				}
 
 				if ($log === '') {
-					echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
+					echo " * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 					if ($sentryClient) {
 						$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']), null, null, [
 							'procName' => getProcName($proc['environ']),
@@ -258,7 +258,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 
 
 			} else {
-				echo "   * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
+				echo " * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 				if ($sentryClient) {
 					$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']), null, null, [
 						'procName' => getProcName($proc['environ']),
