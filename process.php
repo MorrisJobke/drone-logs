@@ -217,6 +217,18 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo substr($fullLog, $start, $end - $start) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
+			} else if ($child['name'] === 'jsunit') {
+				#$start = strpos($fullLog, "\nThere w") + 1;
+				#$end = strpos($fullLog, "FAILURES!\n") - 1;
+				preg_match_all('!^PhantomJS.*\n?(\t.*\n)*!m', $fullLog, $matches);
+
+				$result = array_filter($matches[0], function($i) {
+					return $i !== "PhantomJS not found on PATH\n";
+				});
+
+				echo "<details><summary>Show full log</summary>\n\n```\n";
+				echo join("", $result) . PHP_EOL;
+				echo "```\n</details>\n\n\n";
 			} else if ($child['name'] === 'checkers') {
 
 				$log = '';
