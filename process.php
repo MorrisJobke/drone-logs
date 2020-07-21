@@ -4,7 +4,8 @@ require 'vendor/autoload.php';
 
 $DRONE_URL = 'https://drone.nextcloud.com';
 $DRONE_TOKEN = 'abc';
-$MINIMUM_JOB_ID = 16573;
+$MINIMUM_JOB_ID = 30751;
+$MINIMUM_JOB_ID = 30500;
 $SENTRY_DSN = '';
 
 $sentryClient = null;
@@ -16,7 +17,8 @@ if ($SENTRY_DSN !== '') {
 	$error_handler->registerShutdownFunction();
 }
 
-$help = "Call this script without an argument to fetch all the failed logs of master branch jobs until \$MINIMUM_JOB_ID.
+$branch = 'stable19';
+$help = "Call this script without an argument to fetch all the failed logs of $branch branch jobs until \$MINIMUM_JOB_ID.
 
 Supply a job number to fetch the failure logs for this specifc job.
 ";
@@ -38,7 +40,7 @@ if ($argc > 1) {
 	if (!is_int($number)) {
 		echo "Error: argument needs to be a number\n";
 	}
-	printStats($client, $number, $sentryClient, true);
+	printStats($client, $number, $sentryClient, '', true);
 	exit;
 }
 
@@ -51,17 +53,17 @@ if ($res->getStatusCode() !== 200) {
 $data = json_decode($res->getBody(), true);
 $lowestJobId = INF;
 
-echo "Checking all the latest CI jobs until $MINIMUM_JOB_ID that ran against master…\n";
+echo "Checking all the latest CI jobs until $MINIMUM_JOB_ID that ran against {$branch}…\n";
 foreach ($data as $job) {
 	if ($job['number'] < $lowestJobId) {
 		$lowestJobId = $job['number'];
 	}
-	if ($job['event'] === 'push' && $job['branch'] === 'master') {
+	if ($job['event'] === 'push' && $job['source'] === $branch) {
 		if ($job['status'] !== 'success') {
 			if ($job['number'] < $MINIMUM_JOB_ID) {
 				continue;
 			}
-			printStats($client, $job['number'], $sentryClient);
+			printStats($client, $job['number'], $sentryClient, $branch);
 		} else {
 			echo "Checking {$job['number']} …\n";
 			echo "{$job['number']} success\n";
@@ -70,10 +72,10 @@ foreach ($data as $job) {
 }
 
 for ($i = $lowestJobId - 1; $i > $MINIMUM_JOB_ID; $i--) {
-	printStats($client, $i, $sentryClient);
+	printStats($client, $i, $sentryClient, $branch);
 }
 
-function printStats($client, $jobId, $sentryClient, $force = false) {
+function printStats($client, $jobId, $sentryClient, $branch, $force = false) {
 	#echo "Checking $jobId …\n";
 
 	$res = $client->request('GET', '/api/repos/nextcloud/server/builds/' . $jobId);
@@ -84,7 +86,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 
 	$data = json_decode($res->getBody(), true);
 
-	if (!$force && ($data['event'] !== 'push' || $data['branch'] !== 'master')) {
+	if (!$force && ($data['event'] !== 'push' || $data['source'] !== $branch)) {
 		return;
 	}
 	if ($data['status'] === 'success') {
@@ -103,26 +105,31 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 	global $DRONE_URL;
 	echo '### Status of [' . $jobId . '](' . $DRONE_URL . '/nextcloud/server/' . $jobId . '): ' . $data['status'] . PHP_EOL . PHP_EOL;
 
-	foreach ($data['procs'] as $proc) {
-		if (in_array($proc['state'], ['success', 'pending', 'running'])) {
+	foreach ($data['stages'] as $stage) {
+		if (in_array($stage['status'], ['success', 'pending', 'running'])) {
 			continue;
 		}
 
-		echo "#### " . getProcName($proc['environ']) . PHP_EOL;
-		if ($proc['state'] === 'failure' && isset($proc['error']) && $proc['error'] === 'Cancelled') {
+		echo "#### " . $stage['name'] . PHP_EOL;
+		if ($stage['status'] === 'failure' && isset($stage['error']) && $stage['error'] === 'Cancelled') {
 			echo " * cancelled - typically means that the tests took longer than the drone CI allows them to run\n";
 			continue;
 		}
-		foreach ($proc['children'] as $child) {
-			if (in_array($child['state'], ['success', 'skipped', 'cancelled', 'killed'])) {
+		foreach ($stage['steps'] as $step) {
+			if (in_array($step['status'], ['success', 'skipped', 'cancelled', 'killed'])) {
 				continue;
 			}
-			if ($child['name'] === 'git' && $child['state'] === 'failure') {
+			if ($step['name'] === 'git' && $step['status'] === 'failure') {
 				echo " * git clone failure - can typically be ignored\n";
 				continue;
 			}
 
-			$res = $client->request('GET', "/api/repos/nextcloud/server/logs/$jobId/{$child['pid']}");
+			try {
+				$res = $client->request('GET', "/api/repos/nextcloud/server/builds/$jobId/logs/{$stage['number']}/{$step['number']}");
+			} catch (\GuzzleHttp\Exception\ClientException $e) {
+				echo "Could not fetch logs\n";
+				continue;
+			}
 
 			if ($res->getStatusCode() !== 200) {
 				throw new \Exception('Non-200 status code for logs');
@@ -136,8 +143,13 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				$fullLog .= $log['out'];
 			}
 
-			if (substr($child['name'], 0, strlen('acceptance')) === 'acceptance' ||
-				substr($child['name'], 0, strlen('integration-')) === 'integration-' ) {
+			if ($stage['status'] === 'error' && $stage['error'] === 'Cancelled' && ($stage['stopped'] - $stage['started'] > 1800)) {
+				echo "Timeout was reached\n";
+				continue;
+			}
+
+			if (substr($step['name'], 0, strlen('acceptance')) === 'acceptance' ||
+				substr($step['name'], 0, strlen('integration-')) === 'integration-' ) {
 				preg_match('!--- Failed scenarios:\n\n(((.+)\n)+)\n!', $fullLog, $matches);
 
 				if (isset($matches[1])) {
@@ -158,42 +170,42 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 					echo "```\n</details>\n\n\n";
 
 				} else {
-					list(, $b) = explode("--- Failed scenarios:", $fullLog);
-
-					echo $b;
+					echo $fullLog;
 					throw new \Exception("Regex didn't match");
 				}
-			} else if ($child['name'] === 'git') {
+			} else if ($step['name'] === 'git') {
 				echo "\t\t\tIgnoring git failure\n";
-			} else if ($child['name'] === 'phan') {
+			} else if ($step['name'] === 'phan') {
 				$start = strrpos($fullLog, "\n+") + 2;
 
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo "$" . substr($fullLog, $start);
 				echo "```\n</details>\n\n\n";
-			} else if (in_array($child['name'], [
-				'nodb-php7.0',
-				'nodb-php7.1',
+			} else if (in_array($step['name'], [
 				'nodb-php7.2',
 				'nodb-php7.3',
-				'sqlite-php7.0',
-				'sqlite-php7.1',
+				'nodb-php7.4',
 				'sqlite-php7.2',
 				'sqlite-php7.3',
-				'mysql-php7.0',
-				'mysql-php7.1',
+				'sqlite-php7.4',
+				'mariadb10.1-php7.2',
+				'mariadb10.2-php7.2',
+				'mariadb10.3-php7.2',
+				'mariadb10.4-php7.3',
+				'mysql8.0-php7.2',
+				'mysql5.7-php7.2',
+				'mysql5.7-php7.3',
+				'mysql5.6-php7.2',
 				'mysql-php7.2',
 				'mysql-php7.3',
-				'mysql5.6-php7.0',
-				'mysql5.5-php7.0',
-				'postgres-php7.0',
-				'mysql5.6-php7.1',
-				'mysql5.5-php7.1',
-				'postgres-php7.1',
-				'mysqlmb4-php7.0',
-				'mysqlmb4-php7.1',
+				'postgres9-php7.3',
+				'postgres10-php7.2',
+				'postgres11-php7.2',
+				'postgres-php7.2',
+				'postgres-php7.3',
 				'mysqlmb4-php7.2',
 				'mysqlmb4-php7.3',
+				'mysqlmb4-php7.4',
 				'nodb-codecov',
 				'db-codecov',
 			])) {
@@ -204,11 +216,10 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo substr($fullLog, $start, $realEnd - $start) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
-			} else if (in_array($child['name'], [
-				'sqlite-php7.0-samba-native',
-				'sqlite-php7.0-samba-non-native',
-				'sqlite-php7.1-samba-native',
-				'sqlite-php7.1-samba-non-native',
+			} else if (in_array($step['name'], [
+				'sqlite-php7.3-samba-native',
+				'sqlite-php7.3-samba-non-native',
+				'sqlite-php7.3-webdav-apache',
 				'memcache-memcached',
 			])) {
 				$start = strpos($fullLog, "\nThere w") + 1;
@@ -217,7 +228,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo substr($fullLog, $start, $end - $start) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
-			} else if ($child['name'] === 'jsunit') {
+			} else if ($step['name'] === 'jsunit') {
 				#$start = strpos($fullLog, "\nThere w") + 1;
 				#$end = strpos($fullLog, "FAILURES!\n") - 1;
 				preg_match_all('!^PhantomJS.*\n?(\t.*\n)*!m', $fullLog, $matches);
@@ -229,7 +240,7 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				echo "<details><summary>Show full log</summary>\n\n```\n";
 				echo join("", $result) . PHP_EOL;
 				echo "```\n</details>\n\n\n";
-			} else if ($child['name'] === 'checkers') {
+			} else if ($step['name'] === 'checkers') {
 
 				$log = '';
 
@@ -255,11 +266,11 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 				if ($log === '') {
 					echo " * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 					if ($sentryClient) {
-						$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']), null, null, [
-							'procName' => getProcName($proc['environ']),
-							'proc' => $proc,
-							'child' => $child,
-							'url' => "/nextcloud/server/$jobId/{$child['pid']}",
+						$sentryClient->captureException(new \Exception('Missing extraction for ' . $step['name']), null, null, [
+							'procName' => $stage['name'],
+							'proc' => $stage,
+							'child' => $step,
+							'url' => "/nextcloud/server/$jobId/{$stage['number']}/{$step['number']}",
 						]);
 					}
 				} else {
@@ -272,11 +283,11 @@ function printStats($client, $jobId, $sentryClient, $force = false) {
 			} else {
 				echo " * I'm a little sad 🤖" . " and was not able to find the logs for this failed job - please improve me at https://github.com/MorrisJobke/drone-logs to provide this to you\n";
 				if ($sentryClient) {
-					$sentryClient->captureException(new \Exception('Missing extraction for ' . $child['name']), null, null, [
-						'procName' => getProcName($proc['environ']),
-						'proc' => $proc,
-						'child' => $child,
-						'url' => "/nextcloud/server/$jobId/{$child['pid']}",
+					$sentryClient->captureException(new \Exception('Missing extraction for ' . $step['name']), null, null, [
+						'procName' => $stage['environ'],
+						'proc' => $stage,
+						'child' => $step,
+						'url' => "/nextcloud/server/$jobId/{$stage['number']}/{$step['number']}",
 					]);
 				}
 			}
