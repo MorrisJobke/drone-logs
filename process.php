@@ -111,7 +111,7 @@ function printStats($client, $jobId, $sentryClient, $branch, $force = false) {
 		}
 
 		echo "#### " . $stage['name'] . PHP_EOL;
-		if ($stage['status'] === 'failure' && isset($stage['error']) && $stage['error'] === 'Cancelled') {
+		if (in_array($stage['status'], ['failure', 'error']) && isset($stage['error']) && $stage['error'] === 'Cancelled') {
 			echo " * cancelled - typically means that the tests took longer than the drone CI allows them to run\n";
 			continue;
 		}
@@ -154,7 +154,7 @@ function printStats($client, $jobId, $sentryClient, $branch, $force = false) {
 
 				if (isset($matches[1])) {
 					$failures = $matches[1];
-					$failures = str_replace([' ', '/drone/src/github.com/nextcloud/server/'], ['', ''], $failures);
+					$failures = str_replace([' ', '/drone/src/'], ['', ''], $failures);
 					$failures = explode("\n", trim($failures));
 					echo " * " . join("\n * ", $failures) . PHP_EOL;
 
@@ -170,8 +170,10 @@ function printStats($client, $jobId, $sentryClient, $branch, $force = false) {
 					echo "```\n</details>\n\n\n";
 
 				} else {
+					echo " * failure block could not be found - most likely this run got canceled\n";
+					echo "<details><summary>Show full log</summary>\n\n```\n";
 					echo $fullLog;
-					throw new \Exception("Regex didn't match");
+					echo "```\n</details>\n\n\n";
 				}
 			} else if ($step['name'] === 'git') {
 				echo "\t\t\tIgnoring git failure\n";
